@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>2048</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; min-height: 100%;
+    background: #faf8ef; color: #776e65;
+    font-family: "Clear Sans", "Helvetica Neue", Arial, sans-serif;
+    overscroll-behavior: none; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  .wrap { max-width: 500px; margin: 0 auto; padding: 14px 14px 28px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  h1 { font-size: clamp(54px, 17vw, 80px); margin: 0; font-weight: 700; line-height: 1; }
+  .scores { display: flex; gap: 8px; margin-top: 4px; }
+  .score {
+    position: relative; background: #8f7a66; border-radius: 4px;
+    padding: 6px 12px 8px; text-align: center; min-width: 74px; color: #fff;
+  }
+  .score small { display: block; font-size: 12px; font-weight: 700; color: #eee4da; letter-spacing: .5px; }
+  .score b { font-size: 22px; }
+  .add {
+    position: absolute; left: 0; right: 0; top: 18px; font-weight: 700; color: #776e65;
+    font-size: 20px; pointer-events: none; animation: floatup .7s ease-out forwards;
+  }
+  @keyframes floatup { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-42px); } }
+
+  .sub { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 14px 0 16px; }
+  .sub p { margin: 0; font-size: 15px; line-height: 1.35; }
+  .sub p strong:first-child { display: block; font-size: 16px; }
+  button.new {
+    background: #8f7a66; color: #f9f6f2; border: 0; border-radius: 4px;
+    padding: 12px 16px; font-weight: 700; font-size: 16px; font-family: inherit; cursor: pointer; white-space: nowrap;
+  }
+  button.new:active { background: #7d6a58; }
+
+  .board { position: relative; width: 100%; aspect-ratio: 1; background: #9c8a7b; border-radius: 6px; }
+  .cell, .tile { position: absolute; width: 21.25%; height: 21.25%; border-radius: 3px; }
+  .cell { background: rgba(238, 228, 218, .35); }
+  .tile {
+    display: flex; align-items: center; justify-content: center; font-weight: 700; z-index: 2;
+    transition: left .11s ease-in-out, top .11s ease-in-out;
+  }
+  .tile .in { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 3px; background: inherit; }
+  .tile .in.new { animation: appear .2s .1s ease backwards; }
+  .tile .in.merge { animation: pop .2s ease; }
+  @keyframes appear { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+  .t-2    { background: #eee4da; color: #776e65; }
+  .t-4    { background: #ede0c8; color: #776e65; }
+  .t-8    { background: #f2b179; color: #f9f6f2; }
+  .t-16   { background: #f59563; color: #f9f6f2; }
+  .t-32   { background: #f67c5f; color: #f9f6f2; }
+  .t-64   { background: #f65e3b; color: #f9f6f2; }
+  .t-128  { background: #edcf72; color: #f9f6f2; box-shadow: 0 0 30px 10px rgba(243, 215, 116, .24); }
+  .t-256  { background: #edcc61; color: #f9f6f2; box-shadow: 0 0 30px 10px rgba(243, 215, 116, .32); }
+  .t-512  { background: #edc850; color: #f9f6f2; box-shadow: 0 0 30px 10px rgba(243, 215, 116, .4); }
+  .t-1024 { background: #edc53f; color: #f9f6f2; box-shadow: 0 0 30px 10px rgba(243, 215, 116, .48); }
+  .t-2048 { background: #edc22e; color: #f9f6f2; box-shadow: 0 0 30px 10px rgba(243, 215, 116, .55); }
+  .t-super { background: #3c3a32; color: #f9f6f2; }
+
+  .msg {
+    position: absolute; inset: 0; z-index: 10; display: none; border-radius: 6px;
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    background: rgba(238, 228, 218, .78); text-align: center;
+  }
+  .msg.show { display: flex; animation: fade .4s ease; }
+  .msg h2 { margin: 0; font-size: clamp(30px, 10vw, 54px); color: #776e65; }
+  .msg .btns { display: flex; gap: 10px; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  .hint { margin: 18px 2px 0; font-size: 14px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>2048</h1>
+    <div class="scores">
+      <div class="score" id="scoreBox"><small>BALL</small><b id="score">0</b></div>
+      <div class="score" id="bestBox"><small>REKORD</small><b id="best">0</b></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <p><strong>2048 o'yini</strong>Sonlarni birlashtiring va <strong style="display:inline;font-size:inherit">2048</strong> ga yeting!</p>
+    <button class="new" id="newBtn">Yangi o'yin</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="msg" id="msg"><h2 id="msgTitle"></h2><div class="btns" id="msgBtns"></div></div>
+  </div>
+
+  <p class="hint"><b>Qanday o'ynaladi:</b> barmog'ingiz bilan yuqoriga, pastga, chapga yoki o'ngga suring. Bir xil sonlar tegsa, birlashadi.</p>
+</div>
+
+<script>
+(function () {
+  const N = 4, OFF = 3, STEP = 24.25;
+  const boardEl = document.getElementById('board');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const scoreBox = document.getElementById('scoreBox');
+  const msg = document.getElementById('msg');
+  const msgTitle = document.getElementById('msgTitle');
+  const msgBtns = document.getElementById('msgBtns');
+
+  let grid, score = 0, best = 0, won = false, keepGoing = false, over = false, paused = false, u = 5;
+
+  // ---- Telegram ----
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    try {
+      tg.ready();
+      tg.expand();
+      if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+      tg.setHeaderColor('#faf8ef');
+      tg.setBackgroundColor('#faf8ef');
+    } catch (e) {}
+  }
+
+  // ---- Xotira (localStorage bo'lmasa ham ishlayveradi) ----
+  function store(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+  function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+  // ---- Taxta tayyorlash ----
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.style.left = pos(c) + '%';
+    cell.style.top = pos(r) + '%';
+    boardEl.appendChild(cell);
+  }
+
+  function pos(i) { return OFF + i * STEP; }
+  function fontSize(v) { return (v < 100 ? 9 : v < 1000 ? 7.2 : v < 10000 ? 5.6 : 4.4) * u; }
+
+  function resize() {
+    u = boardEl.clientWidth / 100;
+    document.querySelectorAll('.tile').forEach(el => { el.style.fontSize = ''; });
+    if (grid) grid.forEach(row => row.forEach(t => t && render(t)));
+  }
+  window.addEventListener('resize', resize);
+
+  // ---- Plitka ----
+  function mkTile(r, c, v, cls) {
+    const t = { r, c, v, merged: false };
+    t.el = document.createElement('div');
+    t.inn = document.createElement('div');
+    t.inn.className = 'in';
+    t.el.appendChild(t.inn);
+    boardEl.appendChild(t.el);
+    render(t);
+    place(t);
+    if (cls) pop(t, cls);
+    return t;
+  }
+  function render(t) {
+    t.el.className = 'tile t-' + (t.v > 2048 ? 'super' : t.v);
+    t.el.style.fontSize = fontSize(t.v) + 'px';
+    t.inn.textContent = t.v;
+  }
+  function place(t) {
+    t.el.style.left = pos(t.c) + '%';
+    t.el.style.top = pos(t.r) + '%';
+  }
+  function pop(t, cls) {
+    t.inn.classList.remove('new', 'merge');
+    void t.inn.offsetWidth;
+    t.inn.classList.add(cls);
+  }
+
+  function spawn() {
+    const empty = [];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!grid[r][c]) empty.push([r, c]);
+    if (!empty.length) return;
+    const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+    grid[r][c] = mkTile(r, c, Math.random() < 0.9 ? 2 : 4, 'new');
+  }
+
+  // ---- O'yin boshqaruvi ----
+  function newGame() {
+    boardEl.querySelectorAll('.tile').forEach(el => el.remove());
+    grid = Array.from({ length: N }, () => Array(N).fill(null));
+    score = 0; won = false; keepGoing = false; over = false; paused = false;
+    hideMsg();
+    spawn(); spawn();
+    updateScore();
+    save();
+  }
+
+  function restore() {
+    try {
+      const s = JSON.parse(load('game2048') || 'null');
+      if (!s || !s.v || s.v.length !== N) return false;
+      grid = Array.from({ length: N }, () => Array(N).fill(null));
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (s.v[r][c]) grid[r][c] = mkTile(r, c, s.v[r][c]);
+      score = s.score || 0; won = !!s.won; keepGoing = !!s.keepGoing;
+      over = !canMove();
+      updateScore();
+      if (over) showMsg("O'yin tugadi!", [["Qayta urinish", newGame]]);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function save() {
+    store('game2048', JSON.stringify({
+      v: grid.map(row => row.map(t => (t ? t.v : 0))),
+      score, won, keepGoing
+    }));
+  }
+
+  function updateScore() {
+    scoreEl.textContent = score;
+    if (score > best) { best = score; store('best2048', best); }
+    bestEl.textContent = best;
+  }
+
+  function addFloat(n) {
+    const d = document.createElement('div');
+    d.className = 'add';
+    d.textContent = '+' + n;
+    scoreBox.appendChild(d);
+    setTimeout(() => d.remove(), 700);
+  }
+
+  function canMove() {
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const t = grid[r][c];
+      if (!t) return true;
+      if (c + 1 < N && grid[r][c + 1] && grid[r][c + 1].v === t.v) return true;
+      if (r + 1 < N && grid[r + 1][c] && grid[r + 1][c].v === t.v) return true;
+    }
+    return false;
+  }
+
+  function move(dir) {
+    if (over || paused) return;
+    const [dr, dc] = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] }[dir];
+    const rs = [0, 1, 2, 3], cs = [0, 1, 2, 3];
+    if (dr === 1) rs.reverse();
+    if (dc === 1) cs.reverse();
+
+    let moved = false, gained = 0, reached2048 = false;
+
+    for (const r of rs) for (const c of cs) {
+      const t = grid[r][c];
+      if (!t) continue;
+      let nr = r, nc = c;
+      while (true) {
+        const a = nr + dr, b = nc + dc;
+        if (a < 0 || a >= N || b < 0 || b >= N || grid[a][b]) break;
+        nr = a; nc = b;
+      }
+      const a = nr + dr, b = nc + dc;
+      const o = (a >= 0 && a < N && b >= 0 && b < N) ? grid[a][b] : null;
+
+      if (o && o.v === t.v && !o.merged) {
+        grid[r][c] = null;
+        t.r = a; t.c = b; place(t);
+        o.v *= 2; o.merged = true;
+        gained += o.v; moved = true;
+        if (o.v === 2048 && !won) reached2048 = true;
+        setTimeout(() => { t.el.remove(); render(o); pop(o, 'merge'); }, 110);
+      } else if (nr !== r || nc !== c) {
+        grid[r][c] = null; grid[nr][nc] = t;
+        t.r = nr; t.c = nc; place(t);
+        moved = true;
+      }
+    }
+
+    grid.forEach(row => row.forEach(t => { if (t) t.merged = false; }));
+    if (!moved) return;
+
+    score += gained;
+    if (gained) addFloat(gained);
+    spawn();
+    updateScore();
+
+    if (reached2048) {
+      won = true; paused = true;
+      setTimeout(() => showMsg('Siz yutdingiz! 🎉', [
+        ['Davom etish', () => { keepGoing = true; paused = false; hideMsg(); save(); }],
+        ["Yangi o'yin", newGame]
+      ]), 300);
+    } else if (!canMove()) {
+      over = true;
+      setTimeout(() => showMsg("O'yin tugadi!", [['Qayta urinish', newGame]]), 300);
+    }
+    save();
+  }
+
+  // ---- Xabar oynasi ----
+  function showMsg(title, buttons) {
+    msgTitle.textContent = title;
+    msgBtns.innerHTML = '';
+    buttons.forEach(([label, fn]) => {
+      const b = document.createElement('button');
+      b.className = 'new';
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      msgBtns.appendChild(b);
+    });
+    msg.classList.add('show');
+  }
+  function hideMsg() { msg.classList.remove('show'); }
+
+  // ---- Boshqaruv: surish va klaviatura ----
+  let sx = 0, sy = 0, touching = false;
+  document.addEventListener('touchstart', e => {
+    if (e.target.closest('button')) return;
+    const t = e.touches[0]; sx = t.clientX; sy = t.clientY; touching = true;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => { if (touching) e.preventDefault(); }, { passive: false });
+  document.addEventListener('touchend', e => {
+    if (!touching) return;
+    touching = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 'right' : 'left');
+    else move(dy > 0 ? 'down' : 'up');
+  });
+
+  const keys = {
+    ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
+    a: 'left', d: 'right', w: 'up', s: 'down'
+  };
+  document.addEventListener('keydown', e => {
+    const dir = keys[e.key];
+    if (dir) { e.preventDefault(); move(dir); }
+  });
+
+  document.getElementById('newBtn').addEventListener('click', newGame);
+
+  // ---- Boshlash ----
+  best = parseInt(load('best2048'), 10) || 0;
+  bestEl.textContent = best;
+  u = boardEl.clientWidth / 100;
+  if (!restore()) newGame();
+})();
+</script>
+</body>
+</html>
